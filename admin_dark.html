@@ -1,0 +1,93 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>清吧收银 - 暗金后台</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #0b0b0d; color: #e6e1d8; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial; }
+    .card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); }
+    .accent { color: #d4af37; } /* 暗金 */
+    .btn-outline-accent { border-color: rgba(212,175,55,0.2); color: #d4af37; background: transparent; }
+    .list-group-item { background: transparent; color: #e6e1d8; border: 1px solid rgba(255,255,255,0.03); }
+  </style>
+</head>
+<body>
+<div class="container py-4">
+  <h3 class="accent">Clearbar · 收银台</h3>
+  <div class="row">
+    <div class="col-md-6">
+      <div id="loginBox" class="card p-3 mb-3">
+        <h5>登录</h5>
+        <input id="username" class="form-control mb-2" placeholder="用户名" value="admin">
+        <input id="password" class="form-control mb-2" placeholder="密码" value="password123">
+        <button class="btn btn-outline-accent" onclick="login()">登录</button>
+        <div id="loginMsg" class="mt-2"></div>
+      </div>
+
+      <div id="posBox" style="display:none;">
+        <div class="card p-3 mb-3">
+          <h5>点单菜单</h5>
+          <div id="items" class="list-group mb-2"></div>
+          <h6>购物车</h6>
+          <ul id="cart" class="list-group mb-2"></ul>
+          <div>总计：<span class="accent">¥ <span id="total">0</span></span></div>
+          <button class="btn btn-accent mt-2" onclick="createOrder()">下单并记库存</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card p-3 mb-3">
+        <h5>后台管理</h5>
+        <div class="mb-2">
+          <button class="btn btn-outline-accent" onclick="loadOrders()">刷新订单</button>
+          <a href="/h5/order" target="_blank" class="btn btn-outline-light ms-2">打开扫码下单页</a>
+        </div>
+        <div id="orders"></div>
+        <hr>
+        <div>
+          <h6>寄酒示例</h6>
+          <div>
+            <input id="store_mid" class="form-control mb-1" placeholder="会员ID（示例:1）">
+            <input id="store_iid" class="form-control mb-1" placeholder="商品ID（示例:1）">
+            <button class="btn btn-outline-accent" onclick="storeBottle()">寄存酒瓶</button>
+            <div id="storeMsg" class="mt-2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<script>
+let user=null; let itemsData=[]; let cart=[];
+
+function login(){
+  const u=document.getElementById("username").value;
+  const p=document.getElementById("password").value;
+  fetch("/api/login", {method:"POST", headers: {'Content-Type':'application/json'}, body: JSON.stringify({username:u,password:p})})
+    .then(r=>r.json()).then(d=>{ if(d.ok){ user=d.user; document.getElementById("loginBox").style.display="none"; document.getElementById("posBox").style.display="block"; loadItems(); } else document.getElementById("loginMsg").innerText="登录失败"; });
+}
+
+function loadItems(){ fetch("/api/inventory").then(r=>r.json()).then(data=>{ itemsData=data; let html=""; data.forEach(it=>{ html+=`<button class="list-group-item list-group-item-action" onclick='addToCart(${it.id})'>${it.name} - ¥${it.price}</button>` }); document.getElementById("items").innerHTML=html; }); }
+
+function addToCart(id){ const it=itemsData.find(x=>x.id===id); const ex=cart.find(x=>x.inventory_id===id); if(ex) ex.qty++; else cart.push({inventory_id:id, qty:1, price: it.price, name:it.name}); renderCart(); }
+function renderCart(){ const el=document.getElementById("cart"); el.innerHTML=""; let t=0; cart.forEach((c,idx)=>{ t+=c.qty*c.price; el.innerHTML+=`<li class="list-group-item d-flex justify-content-between align-items-center">${c.name} x ${c.qty} <div><button class="btn btn-sm btn-secondary" onclick="dec(${idx})">-</button> <button class="btn btn-sm btn-secondary" onclick="inc(${idx})">+</button></div></li>`}); document.getElementById("total").innerText=t.toFixed(2); }
+function dec(i){ cart[i].qty--; if(cart[i].qty<=0) cart.splice(i,1); renderCart(); } function inc(i){ cart[i].qty++; renderCart(); }
+
+function createOrder(){ fetch("/api/orders", {method:"POST", headers:{'Content-Type':'application/json'}, body: JSON.stringify({items: cart})}).then(r=>r.json()).then(d=>{ if(d.ok){ alert("下单成功，订单号:"+d.order_no); cart=[]; renderCart(); loadOrders(); } else alert("失败"); }); }
+
+function loadOrders(){ fetch("/api/admin/orders").then(r=>r.json()).then(data=>{ let html=""; data.forEach(o=>{ html+=`<div class="card p-2 mt-2">#${o.order_no} <span style="float:right">¥${o.total}</span><br><small>${o.created_at}</small></div>` }); document.getElementById("orders").innerHTML=html; }); }
+
+function storeBottle(){
+  const mid = document.getElementById("store_mid").value;
+  const iid = document.getElementById("store_iid").value;
+  fetch("/api/stored", {method:"POST", headers:{'Content-Type':'application/json'}, body: JSON.stringify({member_id:mid, inventory_id:iid, qty:1})})
+    .then(r=>r.json()).then(d=>{ if(d.ok) document.getElementById("storeMsg").innerText="寄存成功，标签: "+d.label; else document.getElementById("storeMsg").innerText="寄存失败"; });
+}
+</script>
+</body>
+</html>
